@@ -1,0 +1,64 @@
+const Web3 = require("web3");
+const EthTx = require("ethereumjs-tx");
+
+// DAI smart contract's address in Rinkeby network, chainId = 4
+// https://rinkeby.etherscan.io/token/0x5592ec0cfb4dbc12d3ab100b257153436a1f0fea
+const daiExchangeAddress = "0x5592ec0cfb4dbc12d3ab100b257153436a1f0fea";
+const daiExchangeAbi = require("./erc20abi.json");
+
+const receiverAddress = "<Rinkeby receiver address>"
+const senderAddress = "<Rinkeby sender address>";
+const privKey = "<sender private key>"; // do not disclose the private key
+
+const web3 = new Web3(
+    new Web3.providers.HttpProvider("https://rinkeby.infura.io/v3/<endpoint>")
+);
+
+const daiExchangeContract = new web3.eth.Contract(JSON.parse(JSON.stringify(daiExchangeAbi)), daiExchangeAddress);
+daiExchangeContract.methods.balanceOf(senderAddress).call((err, res) => {
+    if (err) {
+        console.log("An error occurred", err)
+        return
+    }
+    console.log("The sender balance is: ", web3.utils.fromWei(res, 'ether'))
+});
+daiExchangeContract.methods.balanceOf(receiverAddress).call((err, res) => {
+    if (err) {
+        console.log("An error occurred", err)
+        return
+    }
+    console.log("The receiver balance is: ", web3.utils.fromWei(res, 'ether'))
+});
+
+const DAI = web3.utils.toHex(100000000000000000); // 0.1 DAI
+const exchangeEncodeABI = daiExchangeContract.methods.transfer(receiverAddress, DAI).encodeABI();
+
+function sendSignedTx(transactionObject, cb) {
+    let transaction = new EthTx(transactionObject);
+    const privateKey = new Buffer.from(privKey, "hex");
+    transaction.sign(privateKey); // sign a transaction
+    const serializedEthTx = transaction.serialize().toString("hex"); // serialize the transaction
+    web3.eth.sendSignedTransaction(`0x${serializedEthTx}`, cb); // send signed transaction
+}
+
+web3.eth.getTransactionCount(senderAddress).then(async (transactionNonce) => {
+    const transactionObject = {
+        chainId: 4,
+        nonce: web3.utils.toHex(transactionNonce),
+        gasLimit: web3.utils.toHex(500000),
+        gasPrice: web3.utils.toHex(10000000000),
+        value: 0,
+        to: daiExchangeAddress,
+        from: senderAddress,
+        data: exchangeEncodeABI
+    };
+
+    sendSignedTx(transactionObject, (err, ret) => {
+        if (err) {
+            console.log("An error occurred", err)
+            return
+        }
+        console.log("The txHash is: ", ret)
+    });
+});
+
